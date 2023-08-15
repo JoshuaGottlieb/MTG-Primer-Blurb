@@ -165,3 +165,6 @@ Deck-Blurbs.ipynb
 # Images
 *.png
 *.jpg
+
+# Logs
+logs.txt
