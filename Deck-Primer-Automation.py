@@ -76,7 +76,7 @@ class TextBox:
         self.paragraphs = []
 
     # Calculates the bounding box as well as creates paragraphs and lines for pasting
-    def calculate_text_bb(self, image, max_bb_size, min_font_scale):       
+    def calculate_text_bb(self, image, max_bb_size, min_font_scale, logs = []):       
         # Generate generic size of space character to use for line height
         space_size = cv2.getTextSize(' ', self.font, self.font_scale, self.font_width)[0]
         self.line_height = space_size[1]
@@ -152,21 +152,21 @@ class TextBox:
         
         # If the font scale is at the minimum font scale, end calculations.
         if self.font_scale == min_font_scale:
-            print(f'Reached minimum font scale for {self.name}.')
-            return
+            logs.append(f'Reached minimum font scale for {self.name}.\n')
+            return logs
         
         # If the calculated bounding box is too large, downscale the font scale and font width
         # then recalculate using the new attributes. Else, end calculations.
         if self.bounding_box[1] > max_bb_size:
             self.font_scale -= 0.5
-            print(f'Exceeded maximum bounding box for {self.name}. Recalculating with font scale {self.font_scale}')
+            logs.append(f'Exceeded maximum bounding box for {self.name}. Recalculating with font scale {self.font_scale}.\n')
             self.font_width = math.ceil(self.font_scale * 3)
             self.left_margin = original_left_margin
             self.height = 0
             self.width = 0
             self.calculate_text_bb(image, max_bb_size, min_font_scale)
             
-        return
+        return logs
 
     # Places the text on an image at a given x, y location with possible centering and bolding of words.
     def place_text(self, image, x, y, bottom_left_origin = False, centered = False, bold = False):
@@ -336,9 +336,15 @@ def validate_parameters(df):
     
     return
 
+# Writes a list of log lines to a file
+def write_log(log_text, dest = 'logs.txt'):
+    with open(dest, 'w') as f:
+        f.writelines(log_text)
+    return
+
 # Creates an image based off of a row/series from a dataframe
-def create_image(series, display = False, margins = False, save = True):
-    print(f"Calculating bounding boxes for {series.image_name}.")
+def create_image(series, display = False, margins = False, save = True, logs = []):
+    logs.append(f"Calculating bounding boxes for {series.image_name}.\n")
     
     # Set font and font widths
     font = cv2.FONT_HERSHEY_SIMPLEX
@@ -382,11 +388,12 @@ def create_image(series, display = False, margins = False, save = True):
         series.summary_line_spacing,
         bold_words = bold_words,
     )
-    summary_text.calculate_text_bb(image_front, 1000, 2.5)
+    logs = summary_text.calculate_text_bb(image_front, 1000, 2.5, logs = logs)
     
     # Create QR code, save to images, and resize
     qr_image = np.asarray(qrcode.make(series.qr_url).convert("RGB"), dtype = np.uint8)
     if save:
+        logs.append(f'Saving {series.image_name} QR code.\n')
         cv2.imwrite(f'images/{series.image_name}_qr.png', qr_image)
     qr_image = cv2.resize(qr_image, qr_size)
 
@@ -401,8 +408,8 @@ def create_image(series, display = False, margins = False, save = True):
         series.right_margin + series.qr_offset + qr_image.shape[1],
         series.summary_line_spacing
     )
-    qr_text.calculate_text_bb(image_front, 500, summary_text.font_scale)
-
+    logs = qr_text.calculate_text_bb(image_front, 500, summary_text.font_scale, logs = logs)
+    
     # Need to calculate the prefix width first in order to get left margin for points text
     points_prefix = TextBox(
         "Points Prefix",
@@ -415,8 +422,8 @@ def create_image(series, display = False, margins = False, save = True):
         series.right_margin,
         series.points_line_spacing
     )
-    points_prefix.calculate_text_bb(image_front, 200, summary_text.font_scale + 0.5)
-
+    logs = points_prefix.calculate_text_bb(image_front, 200, summary_text.font_scale + 0.5, logs = logs)
+    
     points_text = TextBox(
         "Points Text",
         series.points_text,
@@ -430,15 +437,16 @@ def create_image(series, display = False, margins = False, save = True):
         delim = ';',
         splitter = ','
     )
-    points_text.calculate_text_bb(image_front, 600, summary_text.font_scale + 0.5)
-
+    logs = points_text.calculate_text_bb(image_front, 600, summary_text.font_scale + 0.5, logs = logs)
+    
     # If the points text is smaller than the points prefix, rescale and recalculate
     if(points_text.font_scale < points_prefix.font_scale):
+        logs.append(f'{series.image_name} points text is smaller than the points prefix, recalculating.\n')
         points_prefix.font_scale = points_text.font_scale
         points_prefix.font_width = points_text.font_width
-        points_prefix.calculate_text_bb(image_front, 200, points_text.font_scale)
+        logs = points_prefix.calculate_text_bb(image_front, 200, points_text.font_scale, logs = logs)
         points_text.left_margin = series.left_margin + points_prefix.width
-        points_text.calculate_text_bb(image_front, 600, points_text.font_scale)
+        logs = points_text.calculate_text_bb(image_front, 600, points_text.font_scale, logs = logs)
     
     title_text = TextBox(
         "Front Title",
@@ -451,7 +459,7 @@ def create_image(series, display = False, margins = False, save = True):
         series.right_margin,
         series.title_line_spacing
     )
-    title_text.calculate_text_bb(image_front, 280, points_text.font_scale + 0.5)
+    logs = title_text.calculate_text_bb(image_front, 280, points_text.font_scale + 0.5, logs = logs)
     
     # Calculate back image bounding boxes
     back_text = TextBox(
@@ -469,8 +477,8 @@ def create_image(series, display = False, margins = False, save = True):
         circle = circle,
         paragraph_spacing = paragraph_spacing
     )
-    back_text.calculate_text_bb(image_back, 2400, 2.5)
-
+    logs = back_text.calculate_text_bb(image_back, 2400, 2.5, logs = logs)
+    
     back_title_text = TextBox(
         "Back Title Text",
         series.back_title_text,
@@ -482,7 +490,7 @@ def create_image(series, display = False, margins = False, save = True):
         series.right_margin,
         series.back_title_line_spacing
     )
-    back_title_text.calculate_text_bb(image_back, 280, back_text.font_scale + 1)
+    logs = back_title_text.calculate_text_bb(image_back, 280, back_text.font_scale + 1, logs = logs)
     
     # Calculate total vertical space used for all bounding boxes
     front_vertical_space = calculate_vertical_space([title_text, points_text, summary_text],
@@ -520,8 +528,8 @@ def create_image(series, display = False, margins = False, save = True):
         qr_Y = qr_text.place_text(image_front, series.left_margin, qr_coords[1] - qr_text.bounding_box[1]\
                                   + int((qr_text.bounding_box[1] - qr_text.height) / 2))
     else:
-        print(f"Front text uses too much vertical space for {series.image_name}.")
-
+        logs.append(f"Front text uses too much vertical space for {series.image_name}.\n")
+    
     # Write text to back image
     if (image_back.shape[0] - back_vertical_space) >= 0:
         # Calculate y-positions
@@ -535,8 +543,8 @@ def create_image(series, display = False, margins = False, save = True):
                    back_title_body_line_Y, back_title_body_line_Y)
         back_text_Y = back_text.place_text(image_back, series.left_margin, back_body_text_Y, bold = True)
     else:
-        print("Back text uses too much vertical space.")
-
+        logs.append("Back text uses too much vertical space.\n")
+    
     # Add margins to images
     if margins:
         show_margins(image_front, series.left_margin - 50, series.top_margin - 50)
@@ -549,13 +557,23 @@ def create_image(series, display = False, margins = False, save = True):
     
     # Save images
     if save:
+        logs.append(f'Saving {series.image_name}.\n')
         cv2.imwrite(f'images/{series.image_name}_front.png', image_front)
         cv2.imwrite(f'images/{series.image_name}_back.png', image_back)
         
-def main(csv = 'config.csv', margins = False, display = True, save = True):
+    text_boxes = [title_text, points_prefix, points_text, summary_text, qr_text, back_title_text, back_text]
+
+        
+    return (image_front, image_back), text_boxes, logs
+        
+def main(csv = 'config.csv', margins = False, display = True, save = True, log = True):
+    logs = []
+    
     # Check if config file exists
     if not os.path.exists(csv):
-        print(f'{csv} not found, please ensure {csv} exists in the same directory as this program and run again.')
+        logs.append(f'{csv} not found, please ensure {csv} exists in the same directory as this program and run again.\n')
+        if log:
+            write_log(logs)
         return
     
     # Read in config file
@@ -571,17 +589,24 @@ def main(csv = 'config.csv', margins = False, display = True, save = True):
     
     # Check if images folder exists, create it if it does not
     if not os.path.isdir('images'):
-        print('Images folder does not exist, creating images folder.')
+        logs.append('Images folder does not exist, creating images folder.\n')
         os.mkdir('images')
     
     # Process images
-    for i in df.index:
-        print(f'Processing {df.iloc[i].image_name}.')
-        create_image(df.iloc[i], margins = margins, display = display, save = save)
-        
-    print(f'{len(df.index)} images processed.')
+    images = []
     
-    return
+    for i in df.index:
+        logs.append(f'Processing {df.iloc[i].image_name}.\n')
+        image_pair, text_boxes, logs = create_image(df.iloc[i], margins = margins,
+                                                    display = display, save = save, logs = logs)
+        images.append((image_pair, text_boxes))
+        
+    logs.append(f'{len(df.index)} images processed.\n')
+    
+    if log:
+        write_log(logs)
+    
+    return images
 
 if __name__ == '__main__':
     main()
