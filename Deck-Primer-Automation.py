@@ -131,6 +131,9 @@ class TextBox:
 
         # Create list of paragraphs containing lists of lines.
         self.paragraphs = [paragraph.split('\n') for paragraph in paragraphs_text]
+        
+        self.height = 0
+        self.width = 0
 
         # Calculate the width and height of the paragraphs.
         for i, paragraph in enumerate(self.paragraphs):
@@ -162,8 +165,6 @@ class TextBox:
             logs.append(f'Exceeded maximum bounding box for {self.name}. Recalculating with font scale {self.font_scale}.\n')
             self.font_width = math.ceil(self.font_scale * 3)
             self.left_margin = original_left_margin
-            self.height = 0
-            self.width = 0
             self.calculate_text_bb(image, max_bb_size, min_font_scale)
             
         return logs
@@ -286,6 +287,10 @@ def check_valid_string(x):
     else:
         return str(x)
     
+# Rounds floats based on 1 / mod
+def round_nearest_decimal(x, mod = 2):
+    return round(x * mod) / mod
+
 # Validates entries in a dataframe that has been loaded from a csv
 def validate_parameters(df):
     # Name check
@@ -299,11 +304,11 @@ def validate_parameters(df):
     df.back_body_text = df.back_body_text.apply(lambda x: check_valid_string(x))
     
     # Font scale check
-    df.title_font_scale = df.title_font_scale.apply(lambda x: check_valid_float(x, 6.0))
-    df.points_font_scale = df.points_font_scale.apply(lambda x: check_valid_float(x, 5.0))
-    df.summary_font_scale = df.summary_font_scale.apply(lambda x: check_valid_float(x, 3.5))
-    df.back_title_font_scale = df.back_title_font_scale.apply(lambda x: check_valid_float(x, 6.0))
-    df.back_body_font_scale = df.back_body_font_scale.apply(lambda x: check_valid_float(x, 3.5))
+    df.title_font_scale = df.title_font_scale.apply(lambda x: round_nearest_decimal(check_valid_float(x, 6.0)))
+    df.points_font_scale = df.points_font_scale.apply(lambda x: round_nearest_decimal(check_valid_float(x, 5.0)))
+    df.summary_font_scale = df.summary_font_scale.apply(lambda x: round_nearest_decimal(check_valid_float(x, 3.5)))
+    df.back_title_font_scale = df.back_title_font_scale.apply(lambda x: round_nearest_decimal(check_valid_float(x, 6.0)))
+    df.back_body_font_scale = df.back_body_font_scale.apply(lambda x: round_nearest_decimal(check_valid_float(x, 3.5)))
     
     # Font color check
     df.title_font_color = df.title_font_color.apply(lambda x: check_valid_int(x, 255))
@@ -477,7 +482,7 @@ def create_image(series, display = False, margins = False, save = True, logs = [
         circle = circle,
         paragraph_spacing = paragraph_spacing
     )
-    logs = back_text.calculate_text_bb(image_back, 2400, 2.5, logs = logs)
+    logs = back_text.calculate_text_bb(image_back, 2200, 2.5, logs = logs)
     
     back_title_text = TextBox(
         "Back Title Text",
@@ -500,7 +505,7 @@ def create_image(series, display = False, margins = False, save = True, logs = [
                                                 padding = 100)
 
     back_vertical_space = calculate_vertical_space([back_title_text],
-                                               padding = int(back_text.line_height + back_text.height),
+                                               padding = back_text.height,
                                                top_margin = series.top_margin, bot_margin = series.bot_margin,
                                                line_break_spacing = series.line_break_spacing, num_line_breaks = 1)
 
